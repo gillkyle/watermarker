@@ -324,6 +324,14 @@ export function RemoveMode() {
               {progress.progress != null
                 ? ` — ${(progress.progress * 100).toFixed(0)}%`
                 : ''}
+              {progress.phase === 'Initializing runtime' && (
+                <>
+                  <br />
+                  <span className="muted small">
+                    (can take 30–60s on first run for a 200MB model)
+                  </span>
+                </>
+              )}
             </p>
           )}
           {error && <p className="error small">{error}</p>}

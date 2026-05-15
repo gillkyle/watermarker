@@ -14,10 +14,13 @@ ort.env.wasm.wasmPaths =
  * NCHW, range [0, 1]. Dimensions are dynamic but must be divisible by 8.
  *
  * Hugging Face's CDN sets permissive CORS, so the browser can fetch this
- * directly. First load caches in the browser; subsequent loads are instant.
+ * directly. After first load the bytes are persisted to the Cache API so
+ * subsequent page loads skip the 200MB download.
  */
 export const DEFAULT_MODEL_URL =
   'https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx'
+
+const MODEL_CACHE_NAME = 'watermarker-models-v1'
 
 /**
  * Max longest-edge dimension passed to the model. Larger images are
@@ -27,6 +30,8 @@ export const DEFAULT_MODEL_URL =
 const MAX_INFERENCE_SIZE = 1024
 
 let cachedSession: { url: string; session: ort.InferenceSession } | null = null
+let inflightLoad: { url: string; promise: Promise<ort.InferenceSession> } | null =
+  null
 
 export type ProgressCb = (info: { phase: string; progress?: number }) => void
 
@@ -37,6 +42,71 @@ export async function loadModel(
   if (cachedSession && cachedSession.url === url) {
     return cachedSession.session
   }
+  // De-duplicate concurrent calls — multiple clicks / re-renders shouldn't
+  // start parallel 200MB downloads.
+  if (inflightLoad && inflightLoad.url === url) {
+    return inflightLoad.promise
+  }
+
+  const promise = (async () => {
+    const buf = await loadModelBytes(url, onProgress)
+
+    onProgress?.({ phase: 'Initializing runtime' })
+    console.log(
+      '[inpaint] Creating ORT session, model size =',
+      (buf.byteLength / 1e6).toFixed(1),
+      'MB',
+    )
+    // WASM only by default. WebGPU + LaMa is unreliable across devices
+    // (silent compile failures or 30s+ hangs). Users can opt in later.
+    const session = await ort.InferenceSession.create(buf, {
+      executionProviders: ['wasm'],
+      graphOptimizationLevel: 'all',
+    })
+    console.log(
+      '[inpaint] Session ready. Inputs:',
+      session.inputNames,
+      'Outputs:',
+      session.outputNames,
+    )
+
+    cachedSession = { url, session }
+    onProgress?.({ phase: 'Ready' })
+    return session
+  })()
+
+  inflightLoad = { url, promise }
+  try {
+    return await promise
+  } finally {
+    if (inflightLoad && inflightLoad.url === url) inflightLoad = null
+  }
+}
+
+/**
+ * Fetch the model bytes, hitting the Cache API first. The browser HTTP cache
+ * is unreliable for very large cross-origin downloads, so we persist the
+ * fully-downloaded bytes ourselves.
+ */
+async function loadModelBytes(
+  url: string,
+  onProgress?: ProgressCb,
+): Promise<ArrayBuffer> {
+  // Try Cache API first.
+  if (typeof caches !== 'undefined') {
+    try {
+      const cache = await caches.open(MODEL_CACHE_NAME)
+      const hit = await cache.match(url)
+      if (hit) {
+        onProgress?.({ phase: 'Loading cached model' })
+        const buf = await hit.arrayBuffer()
+        console.log('[inpaint] Loaded model from Cache API:', (buf.byteLength / 1e6).toFixed(1), 'MB')
+        return buf
+      }
+    } catch (err) {
+      console.warn('[inpaint] Cache API read failed, falling back to fetch:', err)
+    }
+  }
 
   onProgress?.({ phase: 'Downloading model', progress: 0 })
   const buf = await fetchWithProgress(url, (loaded, total) => {
@@ -46,15 +116,23 @@ export async function loadModel(
     })
   })
 
-  onProgress?.({ phase: 'Initializing runtime' })
-  const session = await ort.InferenceSession.create(buf, {
-    executionProviders: ['webgpu', 'wasm'],
-    graphOptimizationLevel: 'all',
-  })
+  // Persist for next time.
+  if (typeof caches !== 'undefined') {
+    try {
+      const cache = await caches.open(MODEL_CACHE_NAME)
+      await cache.put(
+        url,
+        new Response(buf, {
+          headers: { 'content-type': 'application/octet-stream' },
+        }),
+      )
+      console.log('[inpaint] Cached model in Cache API')
+    } catch (err) {
+      console.warn('[inpaint] Cache API write failed:', err)
+    }
+  }
 
-  cachedSession = { url, session }
-  onProgress?.({ phase: 'Ready' })
-  return session
+  return buf
 }
 
 async function fetchWithProgress(
