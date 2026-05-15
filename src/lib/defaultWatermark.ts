@@ -10,7 +10,7 @@ import { urlToImage } from './canvas'
  *   public/default-watermark.svg
  * (or change DEFAULT_WATERMARK_URL to point at a different filename).
  */
-export const DEFAULT_WATERMARK_URL = '/default-watermark.svg'
+export const DEFAULT_WATERMARK_URL = `${import.meta.env.BASE_URL}default-watermark.svg`
 
 let cached: HTMLImageElement | null = null
 
