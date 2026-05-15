@@ -1,13 +1,42 @@
 import { urlToImage } from './canvas'
 
 /**
- * Generate a stylized default watermark on a transparent canvas: a heart-on-
- * anchor mark + "Disney Cruise Line" wordmark in italic script.
+ * Default watermark used when the user hasn't uploaded one yet. Sourced from
+ * /public/default-watermark.svg (white wordmark + ship/heart icon, transparent
+ * background). Falls back to a canvas-rendered version if the asset fails to
+ * load.
  *
- * This is a placeholder for users to test the workflow before uploading
- * their actual brand watermark.
+ * To replace with your real brand mark, drop a transparent PNG at
+ *   public/default-watermark.svg
+ * (or change DEFAULT_WATERMARK_URL to point at a different filename).
  */
-export function createDefaultWatermark(): HTMLCanvasElement {
+export const DEFAULT_WATERMARK_URL = '/default-watermark.svg'
+
+let cached: HTMLImageElement | null = null
+
+export async function getDefaultWatermarkImage(): Promise<HTMLImageElement> {
+  if (cached) return cached
+  try {
+    const img = await urlToImage(DEFAULT_WATERMARK_URL)
+    cached = img
+    return img
+  } catch {
+    // Asset missing — synthesize one at runtime so the UI still works.
+    const canvas = createWhiteWatermarkCanvas()
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('toBlob failed'))),
+        'image/png',
+      ),
+    )
+    const url = URL.createObjectURL(blob)
+    const img = await urlToImage(url)
+    cached = img
+    return img
+  }
+}
+
+function createWhiteWatermarkCanvas(): HTMLCanvasElement {
   const w = 1200
   const h = 280
   const canvas = document.createElement('canvas')
@@ -15,61 +44,37 @@ export function createDefaultWatermark(): HTMLCanvasElement {
   canvas.height = h
   const ctx = canvas.getContext('2d')!
 
-  ctx.fillStyle = '#000'
-  ctx.strokeStyle = '#000'
+  ctx.fillStyle = '#fff'
+  ctx.strokeStyle = '#fff'
 
-  // Simple ship + heart icon on the left.
+  // Heart icon.
   ctx.save()
-  ctx.translate(60, 140)
-  drawShipIcon(ctx, 180)
-  ctx.restore()
-
-  // Wordmark to the right of the icon.
-  ctx.save()
-  ctx.translate(290, 0)
-  ctx.fillStyle = '#000'
-  ctx.font = 'italic 700 130px "Brush Script MT", "Lucida Handwriting", "Segoe Script", cursive'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('Disney Cruise Line', 0, h / 2)
-  ctx.restore()
-
-  return canvas
-}
-
-function drawShipIcon(ctx: CanvasRenderingContext2D, size: number) {
-  // Heart, slightly offset upward.
-  ctx.save()
-  ctx.translate(0, -size * 0.25)
-  ctx.scale(size / 100, size / 100)
+  ctx.translate(110, 110)
   ctx.beginPath()
-  ctx.moveTo(0, -20)
-  ctx.bezierCurveTo(-30, -50, -55, -20, 0, 25)
-  ctx.bezierCurveTo(55, -20, 30, -50, 0, -20)
+  ctx.moveTo(0, -12)
+  ctx.bezierCurveTo(-26, -44, -56, -22, 0, 30)
+  ctx.bezierCurveTo(56, -22, 26, -44, 0, -12)
   ctx.closePath()
   ctx.fill()
   ctx.restore()
 
-  // Stylized ship hull arc.
+  // Ship hull arc.
   ctx.save()
-  ctx.translate(0, size * 0.3)
-  ctx.lineWidth = size * 0.08
+  ctx.translate(110, 175)
+  ctx.lineWidth = 14
   ctx.lineCap = 'round'
   ctx.beginPath()
-  ctx.moveTo(-size * 0.55, -size * 0.05)
-  ctx.quadraticCurveTo(0, size * 0.35, size * 0.55, -size * 0.05)
+  ctx.moveTo(-70, -4)
+  ctx.quadraticCurveTo(0, 42, 70, -4)
   ctx.stroke()
   ctx.restore()
-}
 
-let cached: HTMLImageElement | null = null
-export async function getDefaultWatermarkImage(): Promise<HTMLImageElement> {
-  if (cached) return cached
-  const canvas = createDefaultWatermark()
-  const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'),
-  )
-  const url = URL.createObjectURL(blob)
-  const img = await urlToImage(url)
-  cached = img
-  return img
+  // Wordmark.
+  ctx.fillStyle = '#fff'
+  ctx.font =
+    'italic 700 130px "Brush Script MT", "Lucida Handwriting", "Segoe Script", "Apple Chancery", cursive'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('Disney Cruise Line', 240, h / 2 + 10)
+
+  return canvas
 }

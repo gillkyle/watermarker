@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Default watermark for the remover (white, transparent background).
+  Stylized text wordmark + ship/heart icon. Replace public/default-watermark.svg
+  with your actual brand PNG/SVG for production use.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 280" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="0.4" />
+    </filter>
+  </defs>
+
+  <g fill="#ffffff" stroke="none">
+    <!-- Heart -->
+    <g transform="translate(110, 110)">
+      <path d="M0,-12 C-26,-44 -56,-22 0,30 C56,-22 26,-44 0,-12 Z" />
+    </g>
+
+    <!-- Ship hull arc -->
+    <g transform="translate(110, 175)">
+      <path
+        d="M-70,-4 Q0,42 70,-4"
+        stroke="#ffffff"
+        stroke-width="14"
+        stroke-linecap="round"
+        fill="none"
+      />
+    </g>
+
+    <!-- Wordmark: stylized italic script via SVG text with font fallbacks. -->
+    <text
+      x="240"
+      y="180"
+      font-family="'Brush Script MT', 'Lucida Handwriting', 'Segoe Script', 'Apple Chancery', cursive"
+      font-style="italic"
+      font-weight="700"
+      font-size="150"
+      fill="#ffffff"
+      filter="url(#soft)"
+    >Disney Cruise Line</text>
+  </g>
+</svg>
